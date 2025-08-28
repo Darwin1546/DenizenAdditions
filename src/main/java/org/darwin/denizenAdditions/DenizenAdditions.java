@@ -1,17 +1,18 @@
 package org.darwin.denizenAdditions;
 
+import com.denizenscript.denizen.Denizen;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.darwin.denizenAdditions.tags.BinaryTagEncrypt;
 
 public final class DenizenAdditions extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        // Plugin startup logic
-
+        BinaryTagEncrypt.register();
     }
 
     @Override
     public void onDisable() {
-        // Plugin shutdown logic
+        Denizen.getInstance().onDisable();
     }
 }

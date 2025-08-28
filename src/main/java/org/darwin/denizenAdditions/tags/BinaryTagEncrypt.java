@@ -1,36 +1,82 @@
 package org.darwin.denizenAdditions.tags;
 
-public class Tags {
+import com.denizenscript.denizencore.objects.core.BinaryTag;
 
-    public static MegModeledEntityTag getModeledEntity(EntityTag entity) {
-        return new MegModeledEntityTag(entity.getBukkitEntity());
-    }
+import javax.crypto.Cipher;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+
+public class BinaryTagEncrypt {
 
     public static void register() {
+
         // <--[tag]
-        // @attribute <EntityTag.modeled_entity>
-        // @returns MegModeledEntityTag
-        // @plugin Megizen
+        // @attribute <BinaryTag.encrypt[<key>]>
+        // @returns BinaryTag
+        // @plugin DenizenAdditions
         // @description
-        // Returns the modeled entity of the entity, if any.
+        // Encrypts the contents of the BinaryTag using AES with the specified key.
         // -->
-        EntityTag.tagProcessor.registerTag(MegModeledEntityTag.class, "modeled_entity", (attribute, entity) -> {
-            return getModeledEntity(entity);
+        BinaryTag.tagProcessor.registerStaticTag(BinaryTag.class, "encrypt", (attribute, object) -> {
+            if (!attribute.hasParam()) {
+                attribute.echoError("BinaryTag.encrypt[...] requires a key!");
+                return null;
+            }
+            String key = attribute.getParam();
+            try {
+                return new BinaryTag(encrypt(object.data, key));
+            }
+            catch (Exception ex) {
+                attribute.echoError("Encryption failed: " + ex.getMessage());
+                return null;
+            }
         });
 
         // <--[tag]
-        // @attribute <EntityTag.mounted_bone>
-        // @returns MegBoneTag
-        // @plugin Megizen
+        // @attribute <BinaryTag.decrypt[<key>]>
+        // @returns BinaryTag
+        // @plugin DenizenAdditions
         // @description
-        // Returns the MegBoneTag that the entity is mounted on, if any.
+        // Decrypts AES-encrypted data, using the specified key.
         // -->
-        EntityTag.tagProcessor.registerTag(MegBoneTag.class, "mounted_bone", (attribute, entity) -> {
-            MountController controller = ModelEngineAPI.getMountPairManager().getController(entity.getUUID());
-            if (controller == null || controller.getMount() == null) {
+        BinaryTag.tagProcessor.registerStaticTag(BinaryTag.class, "decrypt", (attribute, object) -> {
+            if (!attribute.hasParam()) {
+                attribute.echoError("BinaryTag.decrypt[...] requires a key!");
                 return null;
             }
-            return new MegBoneTag(((BoneBehavior) controller.getMount()).getBone());
+            String key = attribute.getParam();
+            try {
+                return new BinaryTag(decrypt(object.data, key));
+            }
+            catch (Exception ex) {
+                attribute.echoError("Decryption failed: " + ex.getMessage());
+                return null;
+            }
         });
+    }
+
+    // ===== Crypto helpers =====
+
+    private static SecretKeySpec normalizeKey(String key) throws Exception {
+        MessageDigest sha = MessageDigest.getInstance("SHA-256");
+        byte[] hash = sha.digest(key.getBytes(StandardCharsets.UTF_8));
+        byte[] keyBytes = new byte[16];
+        System.arraycopy(hash, 0, keyBytes, 0, 16); // 128-bit key
+        return new SecretKeySpec(keyBytes, "AES");
+    }
+
+    private static byte[] encrypt(byte[] data, String key) throws Exception {
+        SecretKeySpec secretKey = normalizeKey(key);
+        Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+        return cipher.doFinal(data);
+    }
+
+    private static byte[] decrypt(byte[] encrypted, String key) throws Exception {
+        SecretKeySpec secretKey = normalizeKey(key);
+        Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+        cipher.init(Cipher.DECRYPT_MODE, secretKey);
+        return cipher.doFinal(encrypted);
     }
 }

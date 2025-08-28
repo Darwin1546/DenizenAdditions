@@ -1,4 +1,6 @@
-name: Denizen additions
+name: DenizenAdditions
+authors: ['Darwin']
 version: '1.0-SNAPSHOT'
 main: org.darwin.denizenAdditions.DenizenAdditions
 api-version: '1.21'
+depend: [Denizen]
