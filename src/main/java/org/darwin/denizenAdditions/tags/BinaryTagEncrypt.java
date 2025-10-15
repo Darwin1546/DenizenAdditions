@@ -1,6 +1,8 @@
 package org.darwin.denizenAdditions.tags;
 
+import com.denizenscript.denizencore.objects.ObjectTag;
 import com.denizenscript.denizencore.objects.core.BinaryTag;
+import com.denizenscript.denizencore.objects.core.SecretTag;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
@@ -23,9 +25,8 @@ public class BinaryTagEncrypt {
                 attribute.echoError("BinaryTag.encrypt[...] requires a key!");
                 return null;
             }
-            String key = attribute.getParam();
             try {
-                return new BinaryTag(encrypt(object.data, key));
+                return new BinaryTag(encrypt(object.data, attribute.getParamObject()));
             }
             catch (Exception ex) {
                 attribute.echoError("Encryption failed: " + ex.getMessage());
@@ -45,9 +46,8 @@ public class BinaryTagEncrypt {
                 attribute.echoError("BinaryTag.decrypt[...] requires a key!");
                 return null;
             }
-            String key = attribute.getParam();
             try {
-                return new BinaryTag(decrypt(object.data, key));
+                return new BinaryTag(decrypt(object.data, attribute.getParamObject()));
             }
             catch (Exception ex) {
                 attribute.echoError("Decryption failed: " + ex.getMessage());
@@ -58,22 +58,24 @@ public class BinaryTagEncrypt {
 
     // ===== Crypto helpers =====
 
-    private static SecretKeySpec normalizeKey(String key) throws Exception {
+    private static SecretKeySpec normalizeKey(ObjectTag key) throws Exception {
+        String keyValue = key.shouldBeType(SecretTag.class) ? ((SecretTag) key).getValue() : key.toString();
+
         MessageDigest sha = MessageDigest.getInstance("SHA-256");
-        byte[] hash = sha.digest(key.getBytes(StandardCharsets.UTF_8));
+        byte[] hash = sha.digest(keyValue.getBytes(StandardCharsets.UTF_8));
         byte[] keyBytes = new byte[16];
         System.arraycopy(hash, 0, keyBytes, 0, 16); // 128-bit key
         return new SecretKeySpec(keyBytes, "AES");
     }
 
-    private static byte[] encrypt(byte[] data, String key) throws Exception {
+    private static byte[] encrypt(byte[] data, ObjectTag key) throws Exception {
         SecretKeySpec secretKey = normalizeKey(key);
         Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
         cipher.init(Cipher.ENCRYPT_MODE, secretKey);
         return cipher.doFinal(data);
     }
 
-    private static byte[] decrypt(byte[] encrypted, String key) throws Exception {
+    private static byte[] decrypt(byte[] encrypted, ObjectTag key) throws Exception {
         SecretKeySpec secretKey = normalizeKey(key);
         Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
         cipher.init(Cipher.DECRYPT_MODE, secretKey);
