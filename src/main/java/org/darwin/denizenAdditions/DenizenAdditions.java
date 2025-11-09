@@ -7,9 +7,8 @@ import com.denizenscript.denizencore.objects.properties.PropertyParser;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.darwin.denizenAdditions.commands.PlasmoTrackCommand;
-import org.darwin.denizenAdditions.commands.RunAsyncCommand;
 import org.darwin.denizenAdditions.mechanisms.EntitySwingHand;
-import org.darwin.denizenAdditions.mechanisms.PlayerTagDropSlot;
+import org.darwin.denizenAdditions.mechanisms.PlayerDropSlot;
 import org.darwin.denizenAdditions.properties.EntityFreezeTickingLocked;
 import org.darwin.denizenAdditions.properties.EntityTagOwner;
 import org.darwin.denizenAdditions.properties.EntityTagThrower;
@@ -24,7 +23,7 @@ public final class DenizenAdditions extends JavaPlugin {
         BinaryTagEncrypt.register();
         PlayerTagChannels.register();
         EntityTagPotionEffect.register();
-        PlayerTagDropSlot.register();
+        PlayerDropSlot.register();
         EntitySwingHand.register();
         PropertyParser.registerProperty(EntityFreezeTickingLocked.class, EntityTag.class);
         PropertyParser.registerProperty(EntityTagThrower.class, EntityTag.class);
@@ -32,7 +31,6 @@ public final class DenizenAdditions extends JavaPlugin {
         if (Bukkit.getPluginManager().getPlugin("pv-addon-discs") != null) {
             DenizenCore.commandRegistry.registerCommand(PlasmoTrackCommand.class);
         }
-        DenizenCore.commandRegistry.registerCommand(RunAsyncCommand.class);
     }
 
     @Override

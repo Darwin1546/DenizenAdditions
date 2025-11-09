@@ -1,19 +1,17 @@
 package org.darwin.denizenAdditions.commands;
 
+import com.denizenscript.denizencore.DenizenCore;
 import com.denizenscript.denizencore.exceptions.InvalidArgumentsException;
 import com.denizenscript.denizencore.objects.*;
 import com.denizenscript.denizencore.objects.core.*;
 import com.denizenscript.denizencore.scripts.ScriptEntry;
-import com.denizenscript.denizencore.scripts.containers.core.TaskScriptContainer;
 import com.denizenscript.denizencore.scripts.commands.AbstractCommand;
 import com.denizenscript.denizencore.scripts.commands.Holdable;
 import com.denizenscript.denizencore.scripts.queues.ScriptQueue;
+import com.denizenscript.denizencore.utilities.CoreUtilities;
 import com.denizenscript.denizencore.utilities.ScriptUtilities;
 import com.denizenscript.denizencore.utilities.debugging.Debug;
-import org.bukkit.Bukkit;
-import org.bukkit.plugin.Plugin;
 
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 public class RunAsyncCommand extends AbstractCommand implements Holdable {
@@ -27,7 +25,7 @@ public class RunAsyncCommand extends AbstractCommand implements Holdable {
 
     // <--[command]
     // @Name Run_async
-    // @Syntax run_async [<script>] (path:<name>) (def:<element>|.../defmap:<map>/def.<name>:<value>) (id:<name>) (speed:<value>/instantly) (delay:<value>)
+    // @Syntax run_async [<script>] (path:<name>) (def:<element>|.../defmap:<map>/def.<name>:<value>) (id:<name>) (delay:<value>)
     // @Required 1
     // @Maximum -1
     // @Short Runs a script in a new async queue.
@@ -51,11 +49,6 @@ public class RunAsyncCommand extends AbstractCommand implements Holdable {
     // Alternately, use "defmap:<map>" to specify definitions to pass as a MapTag, where the keys will be definition names and the values will of course be definition values.
     //
     // Alternately, use "def.<name>:<value>" to define one or more  named definitions individually.
-    //
-    // Optionally, use the "speed:" argument to specify the queue command-speed to run the target script at,
-    // or use the "instantly" argument to use an instant speed (no command delay applied).
-    // If neither argument is specified, the default queue speed applies (normally instant, refer to the config file).
-    // Generally, prefer to set the "speed:" script key on the script to be ran, rather than using this argument.
     //
     // Optionally, use the "delay:" argument to specify a delay time before the script starts running.
     //
@@ -97,68 +90,97 @@ public class RunAsyncCommand extends AbstractCommand implements Holdable {
 
     @Override
     public void parseArgs(ScriptEntry scriptEntry) throws InvalidArgumentsException {
+        MapTag defMap = new MapTag();
         for (Argument arg : scriptEntry) {
-            if (!scriptEntry.hasObject("script")
-                    && arg.matchesArgumentType(ScriptTag.class)) {
+            if (arg.matchesPrefix("i", "id")) {
+                scriptEntry.addObject("id", arg.asElement());
+            }
+            else if (arg.matchesPrefix("def")) {
+                scriptEntry.addObject("definitions", arg.asType(ListTag.class));
+            }
+            else if (arg.matchesPrefix("defmap")
+                    && arg.matchesArgumentType(MapTag.class)) {
+                defMap.putAll(arg.asType(MapTag.class));
+            }
+            else if (arg.matchesPrefix("delay")
+                    && arg.matchesArgumentType(DurationTag.class)) {
+                scriptEntry.addObject("delay", arg.asType(DurationTag.class));
+            }
+            else if (arg.hasPrefix()
+                    && arg.getPrefix().getRawValue().startsWith("def.")) {
+                defMap.putObject(arg.getPrefix().getRawValue().substring("def.".length()), arg.object);
+            }
+            else if (!scriptEntry.hasObject("script")
+                    && arg.matchesArgumentType(ScriptTag.class)
+                    && arg.limitToOnlyPrefix("script")) {
                 scriptEntry.addObject("script", arg.asType(ScriptTag.class));
             }
-            else if (arg.matchesPrefix("path")) {
+            else if (!scriptEntry.hasObject("path")
+                    && arg.matchesPrefix("path", "p")) {
                 scriptEntry.addObject("path", arg.asElement());
             }
-            else if (arg.matchesPrefix("defmap") && arg.matchesArgumentType(MapTag.class)) {
-                scriptEntry.addObject("def_map", arg.asType(MapTag.class));
-            }
-            else if (arg.matchesPrefix("def") && arg.matchesArgumentType(ListTag.class)) {
-                scriptEntry.addObject("definitions", arg.asType(ListTag.class));
+            else if (!scriptEntry.hasObject("script") && !scriptEntry.hasObject("path")
+                    && !arg.hasPrefix() && arg.asElement().asString().contains(".")) {
+                String path = arg.asElement().asString();
+                int dotIndex = path.indexOf('.');
+                ScriptTag script = ScriptTag.valueOf(path.substring(0, dotIndex), CoreUtilities.noDebugContext);
+                if (script == null) {
+                    arg.reportUnhandled();
+                }
+                else {
+                    scriptEntry.addObject("script", script);
+                    scriptEntry.addObject("path", new ElementTag(path.substring(dotIndex + 1)));
+                }
             }
             else {
                 arg.reportUnhandled();
             }
         }
         if (!scriptEntry.hasObject("script")) {
-            throw new InvalidArgumentsException("Must specify a script to run!");
+            throw new InvalidArgumentsException("Must define a SCRIPT to be run.");
+        }
+        if (!defMap.isEmpty()) {
+            scriptEntry.addObject("def_map", defMap);
         }
     }
 
     @Override
     public void execute(ScriptEntry scriptEntry) {
+        ElementTag pathElement = scriptEntry.getElement("path");
         ScriptTag script = scriptEntry.getObjectTag("script");
-        ElementTag path = scriptEntry.getElement("path");
         MapTag defMap = scriptEntry.getObjectTag("def_map");
+        DurationTag delay = scriptEntry.getObjectTag("delay");
         ListTag definitions = scriptEntry.getObjectTag("definitions");
+        String path = pathElement != null ? pathElement.asString() : null;
 
         if (scriptEntry.dbCallShouldDebug()) {
-            Debug.report(scriptEntry, getName(), script, path, defMap, definitions);
+            Debug.report(scriptEntry, getName(), script, pathElement, defMap, definitions);
         }
 
-        if (!(script.getContainer() instanceof TaskScriptContainer container)) {
-            Debug.echoError(scriptEntry, "Script must be a task script!");
+        if (path != null && !script.getContainer().containsScriptSection(path)) {
+            Debug.echoError(scriptEntry, "Script run failed (invalid path)!");
             return;
         }
 
         Consumer<ScriptQueue> configure = (queue) -> {
+            if (delay != null) {
+                queue.delayUntil(DenizenCore.serverTimeMillis + delay.getMillis());
+            }
             if (defMap != null) {
                 for (var val : defMap.entrySet()) {
                     queue.addDefinition(val.getKey().str, val.getValue());
                 }
             }
             scriptEntry.saveObject("created_queue", new QueueTag(queue));
+            queue.procedural = scriptEntry.getResidingQueue().procedural;
         };
 
-        // Получаем любой активный плагин Denizen (или свой)
-        Plugin plugin = Bukkit.getPluginManager().getPlugin("Denizen");
-        if (plugin == null) {
-            Debug.echoError("Denizen plugin not found! Cannot schedule async task properly.");
-            scriptEntry.setFinished(true);
-            return;
-        }
-
         // Асинхронное выполнение
-        CompletableFuture.runAsync(() -> {
+        DenizenCore.runAsync(() -> {
             try {
                 ScriptQueue queue = ScriptUtilities.createAndStartQueue(
-                        container,
-                        path != null ? path.asString() : null,
+                        script.getContainer(),
+                        path,
                         scriptEntry.entryData,
                         null,
                         configure,
@@ -166,15 +188,13 @@ public class RunAsyncCommand extends AbstractCommand implements Holdable {
                         null,
                         definitions,
                         scriptEntry);
-
-                if (scriptEntry.shouldWaitFor() && queue != null) {
-                    queue.callBack(() ->
-                            Bukkit.getScheduler().runTask(plugin, () -> scriptEntry.setFinished(true))
-                    );
-                }
             } catch (Exception e) {
-                Debug.echoError("Error in run_async: " + e.getMessage());
-                e.printStackTrace();
+                Debug.echoError(scriptEntry, e);
+            }
+            finally {
+                if (scriptEntry.shouldWaitFor()) {
+                    DenizenCore.runOnMainThread(() -> scriptEntry.setFinished(true));
+                }
             }
         });
     }

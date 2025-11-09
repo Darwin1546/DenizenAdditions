@@ -5,7 +5,7 @@ import com.denizenscript.denizen.utilities.inventory.SlotHelper;
 import com.denizenscript.denizencore.objects.core.ElementTag;
 import org.bukkit.entity.Player;
 
-public class PlayerTagDropSlot {
+public class PlayerDropSlot {
 
     public static void register() {
 
